@@ -54,13 +54,21 @@ To generate a YOLO dataset, first, follow the README in the `MatReader` submodul
 Once the data is in .csv format, you can run the following command to generate a YOLO dataset:
 
 ```sh
-poetry run python3 csv_to_yolo.py output_V Data/Video_V yolo_dataset -j $(nproc)
+poetry run python3 csv_to_yolo.py output_V Data/Video_V yolo_unnormalized -j $(nproc)
 ```
 
 If you also did the IR videos, you can run:
 
 ```sh
-poetry run python3 csv_to_yolo.py output_IR Data/Video_IR yolo_dataset -j $(nproc)
+poetry run python3 csv_to_yolo.py output_IR Data/Video_IR yolo_unnormalized -j $(nproc)
+```
+
+#### Preprocessing images
+
+Before splitting/training, it is recommended to preprocess the images to standardize their size. Otherwise, the CPU and RAM become a bottleneck during training. Use the command:
+
+```sh
+poetry run python3 preprocess_data.py --input yolo_unnormalized --output yolo_dataset
 ```
 
 #### Splitting the dataset into train, val, and test sets
@@ -86,13 +94,13 @@ The dataset.yaml file will also be updated to reflect the new structure.
 To train a YOLO model using the generated dataset, you can use the following command:
 
 ```sh
- poetry run python train_temporal_yolo.py \
-   --model yolov10n \
-   --frames 5 \
-   --data yolo_dataset/dataset.yaml \
-   --output ./runs/temporal \
-   --batch 16 \
-   --epochs1 10 \
-   --epochs2 40 \
-   --imgsz 640
+poetry run python train_temporal_yolo.py \
+  --model yolov10n \
+  --frames 5 \
+  --data yolo_dataset/dataset.yaml \
+  --output ./runs/temporal \
+  --batch 16 \
+  --epochs1 10 \
+  --epochs2 40 \
+  --imgsz 640
 ```
