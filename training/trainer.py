@@ -29,6 +29,12 @@ def train_epoch(model, dataloader, optimizer, device, loss_fn, scaler):
         imgs = imgs.to(device, non_blocking=True).float().div_(255.0)  # GPU normalization
         labels = labels.to(device, non_blocking=True)
 
+        # Check for NaN/Inf in input data
+        if torch.isnan(imgs).any() or torch.isinf(imgs).any():
+            print(f"\n⚠️  NaN/Inf in input images, skipping batch")
+            optimizer.zero_grad(set_to_none=True)
+            continue
+
         # GPU augmentation (horizontal flip)
         if augment:
             flip_mask = torch.rand(imgs.shape[0], device=device) > 0.5
@@ -47,6 +53,21 @@ def train_epoch(model, dataloader, optimizer, device, loss_fn, scaler):
 
         with torch.amp.autocast("cuda"):
             preds = model(imgs)
+
+            # Check for NaN in model predictions (handles dict, list, tuple, tensor)
+            has_nan = False
+            if isinstance(preds, dict):
+                has_nan = any(torch.isnan(p).any() or torch.isinf(p).any() for p in preds.values() if torch.is_tensor(p))
+            elif isinstance(preds, (list, tuple)):
+                has_nan = any(torch.isnan(p).any() or torch.isinf(p).any() for p in preds if torch.is_tensor(p))
+            elif torch.is_tensor(preds):
+                has_nan = torch.isnan(preds).any() or torch.isinf(preds).any()
+
+            if has_nan:
+                print(f"\n⚠️  NaN/Inf in model predictions, skipping batch")
+                optimizer.zero_grad(set_to_none=True)
+                continue
+
             batch_dict = {
                 "batch_idx": labels[:, 0],
                 "cls": labels[:, 1],
@@ -55,9 +76,25 @@ def train_epoch(model, dataloader, optimizer, device, loss_fn, scaler):
             loss, loss_items = loss_fn(preds, batch_dict)
             loss = loss.sum()
 
+        # Check for NaN loss before backward pass
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"\n⚠️  NaN/Inf loss detected, skipping batch")
+            optimizer.zero_grad(set_to_none=True)
+            continue
+
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+
+        # Gradient clipping to prevent explosion (clips but continues training)
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+
+        # Only skip if gradients are actually NaN/Inf (not just large)
+        if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+            print(f"\n⚠️  NaN/Inf gradient norm, skipping batch")
+            optimizer.zero_grad(set_to_none=True)
+            scaler.update()
+            continue
+
         scaler.step(optimizer)
         scaler.update()
 

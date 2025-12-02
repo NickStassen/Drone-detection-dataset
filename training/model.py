@@ -76,12 +76,19 @@ def expand_first_conv(model, num_frames: int, init_method: str = "tile") -> None
     new_in_ch = 3 * num_frames
 
     if init_method == "tile":
+        # Tile and average across frames (most stable)
         new_weight = old_weight.repeat(1, num_frames, 1, 1) / num_frames
     elif init_method == "current":
-        new_weight = torch.zeros(out_ch, new_in_ch, kh, kw, device=old_weight.device)
+        new_weight = torch.zeros(out_ch, new_in_ch, kh, kw, device=old_weight.device, dtype=old_weight.dtype)
         new_weight[:, :3, :, :] = old_weight
-        new_weight[:, 3:, :, :] = torch.randn(out_ch, new_in_ch - 3, kh, kw) * 0.01
+        # Very small initialization for new channels (conservative)
+        std = (1.0 / (new_in_ch * kh * kw)) ** 0.5
+        new_weight[:, 3:, :, :] = torch.randn(out_ch, new_in_ch - 3, kh, kw, device=old_weight.device) * std * 0.1
+    elif init_method == "average":
+        # Same as tile (average the pretrained weights)
+        new_weight = old_weight.repeat(1, num_frames, 1, 1) / num_frames
     else:
+        # Default to tile/average
         new_weight = old_weight.repeat(1, num_frames, 1, 1) / num_frames
 
     new_conv = nn.Conv2d(new_in_ch, out_ch, (kh, kw), stride=first_conv.stride, padding=first_conv.padding, bias=first_conv.bias is not None)
@@ -89,6 +96,12 @@ def expand_first_conv(model, num_frames: int, init_method: str = "tile") -> None
 
     if first_conv.bias is not None:
         new_conv.bias.data = first_conv.bias.data.clone()
+
+    # Ensure no NaN/Inf in initialized weights
+    if torch.isnan(new_conv.weight).any() or torch.isinf(new_conv.weight).any():
+        raise ValueError("NaN/Inf detected in expanded conv weights after initialization")
+    if new_conv.bias is not None and (torch.isnan(new_conv.bias).any() or torch.isinf(new_conv.bias).any()):
+        raise ValueError("NaN/Inf detected in expanded conv bias after initialization")
 
     parts = conv_path.split(".")
     parent = model

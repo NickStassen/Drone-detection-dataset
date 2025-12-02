@@ -123,8 +123,13 @@ def train_temporal_yolo(
         for param in first_conv.parameters():
             param.requires_grad = True
 
-        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.model.parameters()), lr=0.01, weight_decay=0.0005)
+        # Very low LR to prevent gradient explosion with expanded conv
+        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.model.parameters()), lr=0.0001, weight_decay=0.0005)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs_phase1)
+
+        # Warmup: gradually increase LR over first 3 epochs
+        warmup_epochs = min(3, epochs_phase1)
+        warmup_factor = 0.01  # Start at 1% of target LR
 
         phase1_dir = output_dir / f"{model_name}_temporal{num_frames}_phase1"
         phase1_dir.mkdir(parents=True, exist_ok=True)
@@ -134,10 +139,18 @@ def train_temporal_yolo(
         for epoch in range(epochs_phase1):
             print(f"\nEpoch {epoch+1}/{epochs_phase1}")
 
+            # Apply warmup to learning rate
+            if epoch < warmup_epochs:
+                warmup_lr = 0.001 * (warmup_factor + (1 - warmup_factor) * epoch / warmup_epochs)
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = warmup_lr
+                print(f"  Warmup LR: {warmup_lr:.6f}")
+
             train_metrics = train_epoch(model.model, train_loader, optimizer, device, loss_fn, scaler)
             val_loss = validate(model.model, val_loader, device, loss_fn)
 
-            scheduler.step()
+            if epoch >= warmup_epochs:
+                scheduler.step()
 
             print(f"  Train loss: {train_metrics['loss']:.4f} (box: {train_metrics['box_loss']:.4f}, " f"cls: {train_metrics['cls_loss']:.4f}, dfl: {train_metrics['dfl_loss']:.4f})")
             print(f"  Val loss: {val_loss:.4f}")
