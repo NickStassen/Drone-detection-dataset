@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 
 from training import (
     TemporalDataset,
+    TemporalBatchSampler,
     collate_fn,
     download_model,
     expand_first_conv,
@@ -73,14 +74,14 @@ def train_temporal_yolo(
     train_dataset = TemporalDataset(train_images, train_labels, num_frames, imgsz, augment=True, cache_gb=cache_gb)
     val_dataset = TemporalDataset(val_images, val_labels, num_frames, imgsz, augment=False, cache_gb=cache_gb * 0.2)  # Smaller val cache
 
+    train_sampler = TemporalBatchSampler(train_dataset, batch_size, shuffle=True)
     train_loader = DataLoader(
         train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
+        batch_sampler=train_sampler,
         num_workers=num_workers,
         collate_fn=collate_fn,
         pin_memory=True,
-        persistent_workers=False,  # Don't accumulate memory
+        persistent_workers=True,  # Cache survives across epochs
         prefetch_factor=2,
     )
     val_loader = DataLoader(
@@ -208,7 +209,7 @@ def main():
     parser.add_argument("--init", type=str, default="tile", choices=["tile", "current", "average"])
     parser.add_argument("--weights-dir", type=Path, default=Path("./weights"))
     parser.add_argument("--phase2-only", action="store_true", help="Skip phase 1")
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--cache-gb", type=float, default=-1, help="Cache size in GB (-1 = auto)")
 
     args = parser.parse_args()

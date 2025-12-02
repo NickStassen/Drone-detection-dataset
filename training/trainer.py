@@ -18,9 +18,30 @@ def train_epoch(model, dataloader, optimizer, device, loss_fn, scaler):
     total_dfl_loss = 0
 
     pbar = tqdm(dataloader, desc="Training")
-    for imgs, labels in pbar:
-        imgs = imgs.to(device, non_blocking=True)
+    for batch_data in pbar:
+        # Handle both 2-tuple (old) and 3-tuple (new) formats
+        if len(batch_data) == 3:
+            imgs, labels, augment = batch_data
+        else:
+            imgs, labels = batch_data
+            augment = False
+
+        imgs = imgs.to(device, non_blocking=True).float().div_(255.0)  # GPU normalization
         labels = labels.to(device, non_blocking=True)
+
+        # GPU augmentation (horizontal flip)
+        if augment:
+            flip_mask = torch.rand(imgs.shape[0], device=device) > 0.5
+            if flip_mask.any():
+                # Flip images
+                imgs[flip_mask] = torch.flip(imgs[flip_mask], dims=[3])
+
+                # Flip bounding box x-coordinates for flipped images
+                # Labels format: [batch_idx, class_id, x_center, y_center, width, height]
+                for batch_idx in flip_mask.nonzero(as_tuple=True)[0]:
+                    label_mask = labels[:, 0] == batch_idx
+                    if label_mask.any():
+                        labels[label_mask, 2] = 1.0 - labels[label_mask, 2]  # x_center = 1 - x_center
 
         optimizer.zero_grad(set_to_none=True)
 
@@ -63,8 +84,14 @@ def validate(model, dataloader, device, loss_fn):
     model.eval()
     total_loss = 0
 
-    for imgs, labels in tqdm(dataloader, desc="Validating"):
-        imgs = imgs.to(device, non_blocking=True)
+    for batch_data in tqdm(dataloader, desc="Validating"):
+        # Handle both 2-tuple (old) and 3-tuple (new) formats
+        if len(batch_data) == 3:
+            imgs, labels, _ = batch_data  # Ignore augment flag in validation
+        else:
+            imgs, labels = batch_data
+
+        imgs = imgs.to(device, non_blocking=True).float().div_(255.0)  # GPU normalization
         labels = labels.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):

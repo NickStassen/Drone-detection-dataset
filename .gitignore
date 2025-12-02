@@ -1,5 +1,11 @@
 yolo_unnormalized/
 yolo_dataset/
 .claude/
+weights/
+runs/
+__pycache__/
+.vscode/
 
+Drone-detection-dataset.sln
 CLAUDE.md
+*.pt

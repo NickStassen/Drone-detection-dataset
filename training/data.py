@@ -141,23 +141,18 @@ class TemporalDataset(Dataset):
         stacked = np.empty((self.img_size, self.img_size, 3 * self.num_frames), dtype=np.uint8)
 
         for i, fidx in enumerate(frame_seq):
-            path = str(self.images_dir / f"{video}_{fidx:05d}.jpg")
-            img = cv2.imread(path, cv2.IMREAD_COLOR)
+            key = f"{video}_{fidx:05d}"
+            path = str(self.images_dir / f"{key}.jpg")
+            img = self._load_image(key, path)  # ✅ Use cache
 
-            # Only resize if needed (preprocessed images skip this)
-            h, w = img.shape[:2]
-            if h != self.img_size or w != self.img_size:
-                img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+            # Already RGB from cache, no BGR->RGB conversion needed
+            stacked[:, :, i * 3 : (i + 1) * 3] = img
 
-            # BGR->RGB via slice (no copy)
-            stacked[:, :, i * 3 : (i + 1) * 3] = img[:, :, ::-1]
+        # CPU augmentation removed - will be done on GPU
+        img_tensor = torch.from_numpy(stacked).permute(2, 0, 1)  # Keep as uint8
+        labels = torch.from_numpy(self.labels_cache[f"{video}_{target:05d}"])
 
-        if self.augment and np.random.rand() > 0.5:
-            stacked = np.ascontiguousarray(stacked[:, ::-1, :])
-
-        img_tensor = torch.from_numpy(stacked).permute(2, 0, 1).float().div_(255.0)
-
-        return img_tensor, torch.from_numpy(self.labels_cache[f"{video}_{target:05d}"])
+        return img_tensor, labels, self.augment  # Return augment flag
 
     def print_cache_stats(self):
         if self.cache:
@@ -165,7 +160,14 @@ class TemporalDataset(Dataset):
 
 
 def collate_fn(batch):
-    imgs, labels_list = zip(*batch)
+    # Handle both old 2-tuple and new 3-tuple formats
+    if len(batch[0]) == 3:
+        imgs, labels_list, augment_flags = zip(*batch)
+        augment = augment_flags[0] if augment_flags else False
+    else:
+        imgs, labels_list = zip(*batch)
+        augment = False
+
     imgs = torch.stack(imgs)
 
     batch_labels = []
@@ -179,4 +181,4 @@ def collate_fn(batch):
     else:
         labels = torch.zeros((0, 6), dtype=torch.float32)
 
-    return imgs, labels
+    return imgs, labels, augment

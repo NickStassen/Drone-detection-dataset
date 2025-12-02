@@ -12,6 +12,7 @@ from .model import (
     freeze_backbone,
     get_loss_fn_for_model
 )
+from .sampler import TemporalBatchSampler
 from .trainer import train_epoch, validate
 from .utils import get_safe_cache_size
 
@@ -26,6 +27,8 @@ __all__ = [
     'expand_first_conv',
     'freeze_backbone',
     'get_loss_fn_for_model',
+    # Sampler
+    'TemporalBatchSampler',
     # Trainer
     'train_epoch',
     'validate',
