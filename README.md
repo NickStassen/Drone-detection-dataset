@@ -76,13 +76,13 @@ poetry run python3 preprocess_data.py --input yolo_unnormalized --output yolo_da
 To split the generated YOLO dataset into training, validation, and test sets, you can use the following command:
 
 ```sh
-python3 split_dataset.py --input yolo_dataset --train 0.8 --val 0.1 --test 0.1
+poetry run python3 split_dataset.py --input yolo_dataset --train 0.8 --val 0.1 --test 0.1
 ```
 
 If you are actively tuning hyperparameters, you might want to use a larger validation set:
 
 ```sh
-python3 split_dataset.py --input yolo_dataset --train 0.7 --val 0.2 --test 0.1
+poetry run python3 split_dataset.py --input yolo_dataset --train 0.7 --val 0.2 --test 0.1
 ```
 
 This will create three folders inside the `yolo_dataset` folder: `train`, `val`, and `test`, each containing the respective images and labels.
@@ -94,7 +94,7 @@ The dataset.yaml file will also be updated to reflect the new structure.
 To train a YOLO model using the generated dataset, you can use the following command:
 
 ```sh
-poetry run python train_temporal_yolo.py \
+poetry run python3 train_temporal_yolo.py \
   --model yolov10n \
   --frames 5 \
   --data yolo_dataset/dataset.yaml \
